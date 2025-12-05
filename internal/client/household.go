@@ -49,3 +49,33 @@ func (h *HouseholdActions) Invitations(ctx context.Context) (any, error) {
 	err := h.c.do(ctx, http.MethodGet, path, nil, nil, &res)
 	return res, err
 }
+
+func (h *HouseholdActions) Devices(ctx context.Context) (any, error) {
+	if err := h.c.requireUser(ctx); err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/household/users/%s/devices", h.c.UserID)
+	var res any
+	err := h.c.do(ctx, http.MethodGet, path, nil, nil, &res)
+	return res, err
+}
+
+func (h *HouseholdActions) Users(ctx context.Context) (any, error) {
+	if err := h.c.requireUser(ctx); err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/household/users/%s/users", h.c.UserID)
+	var res any
+	err := h.c.do(ctx, http.MethodGet, path, nil, nil, &res)
+	return res, err
+}
+
+func (h *HouseholdActions) Guests(ctx context.Context) (any, error) {
+	if err := h.c.requireUser(ctx); err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/household/users/%s/guests", h.c.UserID)
+	var res any
+	err := h.c.do(ctx, http.MethodGet, path, nil, nil, &res)
+	return res, err
+}

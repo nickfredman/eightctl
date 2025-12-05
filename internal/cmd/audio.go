@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -115,6 +116,44 @@ var audioNextCmd = &cobra.Command{Use: "next", RunE: func(cmd *cobra.Command, ar
 	return output.Print(output.Format(viper.GetString("output")), []string{"next"}, rows)
 }}
 
+var audioFavoritesCmd = &cobra.Command{Use: "favorites", Short: "Favorite tracks"}
+
+var audioFavListCmd = &cobra.Command{Use: "list", RunE: func(cmd *cobra.Command, args []string) error {
+	if err := requireAuthFields(); err != nil {
+		return err
+	}
+	cl := client.New(viper.GetString("email"), viper.GetString("password"), viper.GetString("user_id"), viper.GetString("client_id"), viper.GetString("client_secret"))
+	res, err := cl.Audio().Favorites(context.Background())
+	if err != nil {
+		return err
+	}
+	return output.Print(output.Format(viper.GetString("output")), []string{"favorites"}, []map[string]any{{"favorites": res}})
+}}
+
+var audioFavAddCmd = &cobra.Command{Use: "add", RunE: func(cmd *cobra.Command, args []string) error {
+	if err := requireAuthFields(); err != nil {
+		return err
+	}
+	id := viper.GetString("track")
+	if id == "" {
+		return fmt.Errorf("--track required")
+	}
+	cl := client.New(viper.GetString("email"), viper.GetString("password"), viper.GetString("user_id"), viper.GetString("client_id"), viper.GetString("client_secret"))
+	return cl.Audio().AddFavorite(context.Background(), id)
+}}
+
+var audioFavRemoveCmd = &cobra.Command{Use: "remove", RunE: func(cmd *cobra.Command, args []string) error {
+	if err := requireAuthFields(); err != nil {
+		return err
+	}
+	id := viper.GetString("track")
+	if id == "" {
+		return fmt.Errorf("--track required")
+	}
+	cl := client.New(viper.GetString("email"), viper.GetString("password"), viper.GetString("user_id"), viper.GetString("client_id"), viper.GetString("client_secret"))
+	return cl.Audio().RemoveFavorite(context.Background(), id)
+}}
+
 func init() {
 	audioPlayCmd.Flags().String("track", "", "track ID to play")
 	viper.BindPFlag("track", audioPlayCmd.Flags().Lookup("track"))
@@ -122,6 +161,11 @@ func init() {
 	viper.BindPFlag("position", audioSeekCmd.Flags().Lookup("position"))
 	audioVolumeCmd.Flags().Int("level", 50, "volume level 0-100")
 	viper.BindPFlag("level", audioVolumeCmd.Flags().Lookup("level"))
+	audioFavAddCmd.Flags().String("track", "", "track id")
+	viper.BindPFlag("track", audioFavAddCmd.Flags().Lookup("track"))
+	audioFavRemoveCmd.Flags().String("track", "", "track id")
+	viper.BindPFlag("track", audioFavRemoveCmd.Flags().Lookup("track"))
 
-	audioCmd.AddCommand(audioTracksCmd, audioCategoriesCmd, audioStateCmd, audioPlayCmd, audioPauseCmd, audioSeekCmd, audioVolumeCmd, audioPairCmd, audioNextCmd)
+	audioFavoritesCmd.AddCommand(audioFavListCmd, audioFavAddCmd, audioFavRemoveCmd)
+	audioCmd.AddCommand(audioTracksCmd, audioCategoriesCmd, audioStateCmd, audioPlayCmd, audioPauseCmd, audioSeekCmd, audioVolumeCmd, audioPairCmd, audioNextCmd, audioFavoritesCmd)
 }

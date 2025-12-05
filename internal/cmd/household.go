@@ -32,5 +32,8 @@ func init() {
 		householdSimple("schedule", func(cl *client.Client, ctx context.Context) (any, error) { return cl.Household().Schedule(ctx) }),
 		householdSimple("current-set", func(cl *client.Client, ctx context.Context) (any, error) { return cl.Household().CurrentSet(ctx) }),
 		householdSimple("invitations", func(cl *client.Client, ctx context.Context) (any, error) { return cl.Household().Invitations(ctx) }),
+		householdSimple("devices", func(cl *client.Client, ctx context.Context) (any, error) { return cl.Household().Devices(ctx) }),
+		householdSimple("users", func(cl *client.Client, ctx context.Context) (any, error) { return cl.Household().Users(ctx) }),
+		householdSimple("guests", func(cl *client.Client, ctx context.Context) (any, error) { return cl.Household().Guests(ctx) }),
 	)
 }

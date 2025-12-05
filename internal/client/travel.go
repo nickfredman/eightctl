@@ -29,6 +29,22 @@ func (t *TravelActions) CreateTrip(ctx context.Context, body map[string]any) err
 	return t.c.do(ctx, http.MethodPost, path, nil, body, nil)
 }
 
+func (t *TravelActions) CreatePlan(ctx context.Context, tripID string, body map[string]any) error {
+	if err := t.c.requireUser(ctx); err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/users/%s/travel/trips/%s/plans", t.c.UserID, tripID)
+	return t.c.do(ctx, http.MethodPost, path, nil, body, nil)
+}
+
+func (t *TravelActions) UpdatePlan(ctx context.Context, planID string, body map[string]any) error {
+	if err := t.c.requireUser(ctx); err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/users/%s/travel/plans/%s", t.c.UserID, planID)
+	return t.c.do(ctx, http.MethodPatch, path, nil, body, nil)
+}
+
 func (t *TravelActions) DeleteTrip(ctx context.Context, tripID string) error {
 	if err := t.c.requireUser(ctx); err != nil {
 		return err

@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -14,6 +16,53 @@ import (
 var scheduleCmd = &cobra.Command{
 	Use:   "schedule",
 	Short: "Manage device temperature schedules (cloud)",
+}
+
+var scheduleNextCmd = &cobra.Command{
+	Use:   "next",
+	Short: "Show next upcoming schedule events",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := requireAuthFields(); err != nil {
+			return err
+		}
+		tzName := viper.GetString("timezone")
+		loc := time.Local
+		if tzName != "" && tzName != "local" {
+			l, err := time.LoadLocation(tzName)
+			if err != nil {
+				return err
+			}
+			loc = l
+		}
+		now := time.Now().In(loc)
+
+		cl := client.New(viper.GetString("email"), viper.GetString("password"), viper.GetString("user_id"), viper.GetString("client_id"), viper.GetString("client_secret"))
+		scheds, err := cl.ListSchedules(context.Background())
+		if err != nil {
+			return err
+		}
+
+		rows := make([]map[string]any, 0, len(scheds))
+		for _, s := range scheds {
+			next := nextOccurrence(now, s, loc)
+			rows = append(rows, map[string]any{
+				"id":      s.ID,
+				"start":   s.StartTime,
+				"days":    s.DaysOfWeek,
+				"level":   s.Level,
+				"enabled": s.Enabled,
+				"next":    next.Format(time.RFC3339),
+			})
+		}
+
+		sort.Slice(rows, func(i, j int) bool { return rows[i]["next"].(string) < rows[j]["next"].(string) })
+		rows = output.FilterFields(rows, viper.GetStringSlice("fields"))
+		headers := []string{"id", "start", "days", "level", "enabled", "next"}
+		if len(viper.GetStringSlice("fields")) > 0 {
+			headers = viper.GetStringSlice("fields")
+		}
+		return output.Print(output.Format(viper.GetString("output")), headers, rows)
+	},
 }
 
 var scheduleListCmd = &cobra.Command{
@@ -140,5 +189,27 @@ func init() {
 	viper.BindPFlag("days", scheduleUpdateCmd.Flags().Lookup("days"))
 	viper.BindPFlag("enabled", scheduleUpdateCmd.Flags().Lookup("enabled"))
 
-	scheduleCmd.AddCommand(scheduleListCmd, scheduleCreateCmd, scheduleUpdateCmd, scheduleDeleteCmd)
+	scheduleCmd.AddCommand(scheduleListCmd, scheduleCreateCmd, scheduleUpdateCmd, scheduleDeleteCmd, scheduleNextCmd)
+}
+
+func nextOccurrence(now time.Time, s client.TemperatureSchedule, loc *time.Location) time.Time {
+	hour, min, _ := time.Now().Clock()
+	if t, err := time.Parse("15:04", s.StartTime); err == nil {
+		hour, min, _ = t.Clock()
+	}
+	days := map[int]bool{}
+	for _, d := range s.DaysOfWeek {
+		days[d] = true
+	}
+	for i := 0; i < 14; i++ {
+		day := now.In(loc).AddDate(0, 0, i)
+		if len(days) > 0 && !days[int(day.Weekday())] {
+			continue
+		}
+		cand := time.Date(day.Year(), day.Month(), day.Day(), hour, min, 0, 0, loc)
+		if cand.After(now) {
+			return cand
+		}
+	}
+	return now
 }

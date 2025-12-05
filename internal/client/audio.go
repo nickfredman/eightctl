@@ -98,3 +98,30 @@ func (a *AudioActions) RecommendedNext(ctx context.Context) (any, error) {
 	err := a.c.do(ctx, http.MethodGet, path, nil, nil, &res)
 	return res, err
 }
+
+func (a *AudioActions) Favorites(ctx context.Context) (any, error) {
+	if err := a.c.requireUser(ctx); err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/users/%s/audio/tracks/favorites", a.c.UserID)
+	var res any
+	err := a.c.do(ctx, http.MethodGet, path, nil, nil, &res)
+	return res, err
+}
+
+func (a *AudioActions) AddFavorite(ctx context.Context, trackID string) error {
+	if err := a.c.requireUser(ctx); err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/users/%s/audio/tracks/favorites", a.c.UserID)
+	body := map[string]any{"trackId": trackID}
+	return a.c.do(ctx, http.MethodPost, path, nil, body, nil)
+}
+
+func (a *AudioActions) RemoveFavorite(ctx context.Context, trackID string) error {
+	if err := a.c.requireUser(ctx); err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/users/%s/audio/tracks/favorites/%s", a.c.UserID, trackID)
+	return a.c.do(ctx, http.MethodDelete, path, nil, nil, nil)
+}
