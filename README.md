@@ -3,6 +3,7 @@
 A modern Go CLI for Eight Sleep Pods. Control power/temperature, alarms, schedules, audio, base, autopilot, travel, household, and export sleep metrics. Includes a daemon for scheduled routines.
 
 > Eight Sleep does **not** publish a stable public API. `eightctl` talks to the same undocumented cloud endpoints the mobile apps use. Default OAuth client creds are baked in (from Android APK 7.39.17), so typically you only supply email + password.
+> **Status:** WIP. The code paths are implemented, but live verification is currently blocked by Eight Sleep API rate limiting on the test account.
 
 ## Quickstart
 ```bash
