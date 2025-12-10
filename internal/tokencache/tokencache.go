@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/99designs/keyring"
+	"github.com/charmbracelet/log"
 )
 
 const (
@@ -44,6 +45,7 @@ func filePassword(_ string) (string, error) {
 func Save(token string, expiresAt time.Time, userID string) error {
 	ring, err := openKeyring()
 	if err != nil {
+		log.Debug("keyring open failed (save)", "error", err)
 		return err
 	}
 	data, err := json.Marshal(CachedToken{
@@ -54,19 +56,27 @@ func Save(token string, expiresAt time.Time, userID string) error {
 	if err != nil {
 		return err
 	}
-	return ring.Set(keyring.Item{
-		Key:  tokenKey,
-		Data: data,
-	})
+	if err := ring.Set(keyring.Item{
+		Key:   tokenKey,
+		Label: serviceName + " token",
+		Data:  data,
+	}); err != nil {
+		log.Debug("keyring set failed", "error", err)
+		return err
+	}
+	log.Debug("keyring saved token")
+	return nil
 }
 
 func Load() (*CachedToken, error) {
 	ring, err := openKeyring()
 	if err != nil {
+		log.Debug("keyring open failed (load)", "error", err)
 		return nil, err
 	}
 	item, err := ring.Get(tokenKey)
 	if err != nil {
+		log.Debug("keyring get failed", "error", err)
 		return nil, err
 	}
 	var cached CachedToken
