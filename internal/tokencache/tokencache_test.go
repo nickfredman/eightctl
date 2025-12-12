@@ -1,7 +1,6 @@
 package tokencache
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,205 +8,162 @@ import (
 	"github.com/99designs/keyring"
 )
 
-func testKeyring(t *testing.T) keyring.Keyring {
+func withTestKeyring(t *testing.T) {
 	t.Helper()
 	tmpDir := t.TempDir()
-	ring, err := keyring.Open(keyring.Config{
-		ServiceName:      serviceName + "-test",
-		AllowedBackends:  []keyring.BackendType{keyring.FileBackend},
-		FileDir:          filepath.Join(tmpDir, "keyring"),
-		FilePasswordFunc: func(_ string) (string, error) { return "test-pass", nil },
-	})
-	if err != nil {
-		t.Fatalf("failed to open test keyring: %v", err)
-	}
-	return ring
-}
-
-func TestSaveAndLoad(t *testing.T) {
-	ring := testKeyring(t)
-
-	token := "test-token-123"
-	expiresAt := time.Now().Add(time.Hour)
-	userID := "user-456"
-
-	// Save token to keyring
-	data, err := json.Marshal(CachedToken{
-		Token:     token,
-		ExpiresAt: expiresAt,
-		UserID:    userID,
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if err := ring.Set(keyring.Item{Key: tokenKey, Data: data}); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-
-	// Load token from keyring
-	item, err := ring.Get(tokenKey)
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-
-	var cached CachedToken
-	if err := json.Unmarshal(item.Data, &cached); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if cached.Token != token {
-		t.Errorf("token: got %s, want %s", cached.Token, token)
-	}
-	if cached.UserID != userID {
-		t.Errorf("userID: got %s, want %s", cached.UserID, userID)
-	}
-	if !cached.ExpiresAt.Equal(expiresAt) {
-		t.Errorf("expiresAt: got %v, want %v", cached.ExpiresAt, expiresAt)
-	}
-}
-
-func TestExpiredToken(t *testing.T) {
-	ring := testKeyring(t)
-
-	// Save expired token
-	expiredTime := time.Now().Add(-time.Hour)
-	data, err := json.Marshal(CachedToken{
-		Token:     "expired-token",
-		ExpiresAt: expiredTime,
-		UserID:    "user-123",
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if err := ring.Set(keyring.Item{Key: tokenKey, Data: data}); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-
-	// Try to load - should get error for expired token
-	item, err := ring.Get(tokenKey)
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-
-	var cached CachedToken
-	if err := json.Unmarshal(item.Data, &cached); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if !time.Now().After(cached.ExpiresAt) {
-		t.Errorf("token should be expired")
-	}
-}
-
-func TestClear(t *testing.T) {
-	ring := testKeyring(t)
-
-	// Save a token
-	data, err := json.Marshal(CachedToken{
-		Token:     "test-token",
-		ExpiresAt: time.Now().Add(time.Hour),
-		UserID:    "user-123",
-	})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if err := ring.Set(keyring.Item{Key: tokenKey, Data: data}); err != nil {
-		t.Fatalf("set: %v", err)
-	}
-
-	// Verify token exists
-	if _, err := ring.Get(tokenKey); err != nil {
-		t.Fatalf("get before clear: %v", err)
-	}
-
-	// Clear the token
-	if err := ring.Remove(tokenKey); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-
-	// Verify token is gone
-	if _, err := ring.Get(tokenKey); err != keyring.ErrKeyNotFound {
-		t.Errorf("expected ErrKeyNotFound after clear, got: %v", err)
-	}
-}
-
-func TestIntegrationSaveLoadClear(t *testing.T) {
-	// Override openKeyring for this test
-	tmpDir := t.TempDir()
-	origOpenKeyring := openKeyring
+	orig := openKeyring
 	openKeyring = func() (keyring.Keyring, error) {
 		return keyring.Open(keyring.Config{
-			ServiceName:      serviceName + "-integration",
+			ServiceName:      serviceName + "-test",
 			AllowedBackends:  []keyring.BackendType{keyring.FileBackend},
 			FileDir:          filepath.Join(tmpDir, "keyring"),
 			FilePasswordFunc: func(_ string) (string, error) { return "test-pass", nil },
 		})
 	}
-	t.Cleanup(func() { openKeyring = origOpenKeyring })
+	t.Cleanup(func() { openKeyring = orig })
+}
 
-	token := "integration-token"
-	expiresAt := time.Now().Add(2 * time.Hour)
-	userID := "integration-user"
+func TestSaveLoadRoundTrip(t *testing.T) {
+	withTestKeyring(t)
 
-	// Test Save
-	if err := Save(token, expiresAt, userID); err != nil {
+	id := Identity{BaseURL: "https://api.example.com", ClientID: "client-1", Email: "User@Example.com"}
+	exp := time.Now().Add(time.Hour)
+
+	if err := Save(id, "token-123", exp, "user-1"); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	// Test Load
-	cached, err := Load()
+	got, err := Load(id, "user-1")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cached.Token != token {
-		t.Errorf("token: got %s, want %s", cached.Token, token)
+	if got.Token != "token-123" {
+		t.Errorf("token = %q, want token-123", got.Token)
 	}
-	if cached.UserID != userID {
-		t.Errorf("userID: got %s, want %s", cached.UserID, userID)
+	if !got.ExpiresAt.Equal(exp) {
+		t.Errorf("expiresAt = %v, want %v", got.ExpiresAt, exp)
 	}
-
-	// Test Clear
-	if err := Clear(); err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
-
-	// Verify cleared
-	if _, err := Load(); err != keyring.ErrKeyNotFound {
-		t.Errorf("expected ErrKeyNotFound after Clear, got: %v", err)
+	if got.UserID != "user-1" {
+		t.Errorf("userID = %q, want user-1", got.UserID)
 	}
 }
 
-func TestLoadExpiredTokenReturnsError(t *testing.T) {
-	tmpDir := t.TempDir()
-	origOpenKeyring := openKeyring
-	openKeyring = func() (keyring.Keyring, error) {
-		return keyring.Open(keyring.Config{
-			ServiceName:      serviceName + "-expired",
-			AllowedBackends:  []keyring.BackendType{keyring.FileBackend},
-			FileDir:          filepath.Join(tmpDir, "keyring"),
-			FilePasswordFunc: func(_ string) (string, error) { return "test-pass", nil },
-		})
-	}
-	t.Cleanup(func() { openKeyring = origOpenKeyring })
-
-	// Save expired token
-	expiredTime := time.Now().Add(-time.Minute)
-	if err := Save("expired-token", expiredTime, "user-id"); err != nil {
+func TestLoadSkipsMismatchedUser(t *testing.T) {
+	withTestKeyring(t)
+	id := Identity{BaseURL: "https://api.example.com", ClientID: "client-1"}
+	if err := Save(id, "token", time.Now().Add(time.Hour), "user-a"); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
+	if _, err := Load(id, "user-b"); err != keyring.ErrKeyNotFound {
+		t.Fatalf("expected ErrKeyNotFound for mismatched user, got %v", err)
+	}
+}
 
-	// Load should return ErrKeyNotFound for expired token
-	if _, err := Load(); err != keyring.ErrKeyNotFound {
-		t.Errorf("expected ErrKeyNotFound for expired token, got: %v", err)
+func TestLoadExpiredRemovesEntry(t *testing.T) {
+	withTestKeyring(t)
+	id := Identity{BaseURL: "https://api.example.com", ClientID: "client-1"}
+	if err := Save(id, "expired", time.Now().Add(-time.Minute), "user-1"); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if _, err := Load(id, "user-1"); err != keyring.ErrKeyNotFound {
+		t.Fatalf("expected ErrKeyNotFound for expired token, got %v", err)
+	}
+	// second load should still be ErrKeyNotFound (entry removed)
+	if _, err := Load(id, "user-1"); err != keyring.ErrKeyNotFound {
+		t.Fatalf("expected ErrKeyNotFound after removal, got %v", err)
+	}
+}
+
+func TestClearIgnoresMissing(t *testing.T) {
+	withTestKeyring(t)
+	id := Identity{BaseURL: "https://api.example.com", ClientID: "client-1"}
+	if err := Clear(id); err != nil {
+		t.Fatalf("Clear missing: %v", err)
+	}
+}
+
+func TestNamespacingByIdentity(t *testing.T) {
+	withTestKeyring(t)
+	idA := Identity{BaseURL: "https://api.example.com", ClientID: "client-1", Email: "a@example.com"}
+	idB := Identity{BaseURL: "https://api.example.com", ClientID: "client-2", Email: "a@example.com"}
+	idC := Identity{BaseURL: "https://api.example.com", ClientID: "client-1", Email: "b@example.com"}
+	idD := Identity{BaseURL: "https://api.example.com", ClientID: "client-1", Email: ""}
+
+	if err := Save(idA, "token-a", time.Now().Add(time.Hour), "user-a"); err != nil {
+		t.Fatalf("Save A: %v", err)
+	}
+	if err := Save(idB, "token-b", time.Now().Add(time.Hour), "user-b"); err != nil {
+		t.Fatalf("Save B: %v", err)
+	}
+	if err := Save(idC, "token-c", time.Now().Add(time.Hour), "user-c"); err != nil {
+		t.Fatalf("Save C: %v", err)
+	}
+	if err := Save(idD, "token-d", time.Now().Add(time.Hour), "user-d"); err != nil {
+		t.Fatalf("Save D: %v", err)
+	}
+
+	if got, _ := Load(idA, "user-a"); got.Token != "token-a" {
+		t.Errorf("Load A token = %q, want token-a", got.Token)
+	}
+	if _, err := Load(idA, "user-b"); err != keyring.ErrKeyNotFound {
+		t.Errorf("Load A with user-b should miss, got %v", err)
+	}
+	if got, _ := Load(idB, "user-b"); got.Token != "token-b" {
+		t.Errorf("Load B token = %q, want token-b", got.Token)
+	}
+	if got, _ := Load(idC, "user-c"); got.Token != "token-c" {
+		t.Errorf("Load C token = %q, want token-c", got.Token)
+	}
+	if got, _ := Load(idD, ""); got.Token != "token-d" {
+		t.Errorf("Load D token = %q, want token-d", got.Token)
+	}
+}
+
+func TestClearOnlyRemovesMatchingIdentity(t *testing.T) {
+	withTestKeyring(t)
+	idA := Identity{BaseURL: "https://api.example.com", ClientID: "client-1", Email: "a@example.com"}
+	idB := Identity{BaseURL: "https://api.example.com", ClientID: "client-2", Email: "a@example.com"}
+
+	if err := Save(idA, "token-a", time.Now().Add(time.Hour), "user-a"); err != nil {
+		t.Fatalf("Save A: %v", err)
+	}
+	if err := Save(idB, "token-b", time.Now().Add(time.Hour), "user-b"); err != nil {
+		t.Fatalf("Save B: %v", err)
+	}
+
+	if err := Clear(idA); err != nil {
+		t.Fatalf("Clear A: %v", err)
+	}
+	if _, err := Load(idA, "user-a"); err != keyring.ErrKeyNotFound {
+		t.Fatalf("expected A cleared, got %v", err)
+	}
+	if got, err := Load(idB, "user-b"); err != nil || got.Token != "token-b" {
+		t.Fatalf("B should remain, got %v err %v", got, err)
+	}
+}
+
+func TestCacheKeyNormalization(t *testing.T) {
+	k1 := cacheKey(Identity{BaseURL: "https://API.example.com/", ClientID: "id", Email: "User@Example.com "})
+	k2 := cacheKey(Identity{BaseURL: "https://api.example.com", ClientID: "id", Email: "user@example.com"})
+	if k1 != k2 {
+		t.Fatalf("cacheKey should normalize; got %q vs %q", k1, k2)
+	}
+}
+
+func TestCacheKeyHandlesEmptyEmail(t *testing.T) {
+	k1 := cacheKey(Identity{BaseURL: "https://api.example.com", ClientID: "id", Email: ""})
+	k2 := cacheKey(Identity{BaseURL: "https://api.example.com/", ClientID: "id", Email: " "})
+	if k1 != k2 {
+		t.Fatalf("cacheKey should normalize empty emails; got %q vs %q", k1, k2)
 	}
 }
 
 func TestFilePasswordFunc(t *testing.T) {
-	pw, err := filePassword("any-string")
+	pw, err := filePassword("ignored")
 	if err != nil {
 		t.Fatalf("filePassword: %v", err)
 	}
 	if pw != serviceName+"-fallback" {
-		t.Errorf("password: got %s, want %s", pw, serviceName+"-fallback")
+		t.Fatalf("password = %q, want %q", pw, serviceName+"-fallback")
 	}
 }

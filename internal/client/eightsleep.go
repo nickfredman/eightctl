@@ -70,8 +70,6 @@ func (c *Client) Authenticate(ctx context.Context) error {
 	if err := c.authTokenEndpoint(ctx); err == nil {
 		return nil
 	}
-	// OAuth failed - clear any stale cached token before trying legacy
-	tokencache.Clear()
 	return c.authLegacyLogin(ctx)
 }
 
@@ -162,7 +160,7 @@ func (c *Client) authTokenEndpoint(ctx context.Context) error {
 	if c.UserID == "" {
 		c.UserID = res.UserID
 	}
-	if err := tokencache.Save(c.token, c.tokenExp, c.UserID); err != nil {
+	if err := tokencache.Save(c.Identity(), c.token, c.tokenExp, c.UserID); err != nil {
 		log.Debug("failed to cache token", "error", err)
 	} else {
 		log.Debug("saved token to cache", "expires_at", c.tokenExp)
@@ -220,7 +218,7 @@ func (c *Client) authLegacyLogin(ctx context.Context) error {
 	if c.UserID == "" {
 		c.UserID = res.Session.UserID
 	}
-	if err := tokencache.Save(c.token, c.tokenExp, c.UserID); err != nil {
+	if err := tokencache.Save(c.Identity(), c.token, c.tokenExp, c.UserID); err != nil {
 		log.Debug("failed to cache token", "error", err)
 	} else {
 		log.Debug("saved token to cache (legacy)", "expires_at", c.tokenExp)
@@ -235,7 +233,7 @@ func (c *Client) ensureToken(ctx context.Context) error {
 	}
 	// Trust cached tokens without server validation. If token is invalid,
 	// the server will return 401 and we'll clear cache + re-authenticate.
-	if cached, err := tokencache.Load(); err == nil {
+	if cached, err := tokencache.Load(c.Identity(), c.UserID); err == nil {
 		log.Debug("loaded token from cache", "expires_at", cached.ExpiresAt, "user_id", cached.UserID)
 		c.token = cached.Token
 		c.tokenExp = cached.ExpiresAt
@@ -296,7 +294,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		c.token = ""
-		tokencache.Clear()
+		_ = tokencache.Clear(c.Identity())
 		if err := c.ensureToken(ctx); err != nil {
 			return err
 		}
@@ -329,6 +327,14 @@ func (c *Client) setPower(ctx context.Context, on bool) error {
 	path := fmt.Sprintf("/users/%s/devices/power", c.UserID)
 	body := map[string]bool{"on": on}
 	return c.do(ctx, http.MethodPost, path, nil, body, nil)
+}
+
+func (c *Client) Identity() tokencache.Identity {
+	return tokencache.Identity{
+		BaseURL:  c.BaseURL,
+		ClientID: c.ClientID,
+		Email:    c.Email,
+	}
 }
 
 // SetTemperature sets target heating/cooling level (-100..100).

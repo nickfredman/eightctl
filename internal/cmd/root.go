@@ -9,7 +9,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/steipete/eightctl/internal/client"
 	"github.com/steipete/eightctl/internal/config"
+	"github.com/steipete/eightctl/internal/tokencache"
 )
 
 var (
@@ -111,6 +113,21 @@ func initConfig() {
 }
 
 func requireAuthFields() error {
+	// Allow cached token to satisfy auth without requiring credentials.
+	c := client.New(
+		viper.GetString("email"),
+		viper.GetString("password"),
+		viper.GetString("user_id"),
+		viper.GetString("client_id"),
+		viper.GetString("client_secret"),
+	)
+	if cached, err := tokencache.Load(c.Identity(), viper.GetString("user_id")); err == nil {
+		if cached.UserID != "" {
+			viper.Set("user_id", cached.UserID)
+		}
+		return nil
+	}
+
 	missing := []string{}
 	if viper.GetString("email") == "" {
 		missing = append(missing, "email")
