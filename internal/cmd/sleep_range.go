@@ -51,6 +51,8 @@ var sleepRangeCmd = &cobra.Command{
 				"date":       day.Date,
 				"score":      day.Score,
 				"duration":   day.Duration,
+				"deep":       day.DeepDuration(),
+				"rem":        day.REMDuration(),
 				"tnt":        day.Tnt,
 				"resp_rate":  day.Respiratory,
 				"heart_rate": day.HeartRate,
@@ -58,7 +60,7 @@ var sleepRangeCmd = &cobra.Command{
 			})
 		}
 		rows = output.FilterFields(rows, viper.GetStringSlice("fields"))
-		headers := []string{"date", "score", "duration", "tnt", "resp_rate", "heart_rate", "hrv_score"}
+		headers := []string{"date", "score", "duration", "deep", "rem", "tnt", "resp_rate", "heart_rate", "hrv_score"}
 		if len(viper.GetStringSlice("fields")) > 0 {
 			headers = viper.GetStringSlice("fields")
 		}

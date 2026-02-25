@@ -45,13 +45,15 @@ var sleepDayCmd = &cobra.Command{
 				"resp_rate":      day.Respiratory,
 				"heart_rate":     day.HeartRate,
 				"duration":       day.Duration,
+				"deep":           day.DeepDuration(),
+				"rem":            day.REMDuration(),
 				"latency_asleep": day.LatencyAsleep,
 				"latency_out":    day.LatencyOut,
 				"hrv_score":      day.SleepQuality.HRV.Score,
 			},
 		}
 		rows = output.FilterFields(rows, viper.GetStringSlice("fields"))
-		return output.Print(output.Format(viper.GetString("output")), []string{"date", "score", "duration", "latency_asleep", "latency_out", "tnt", "resp_rate", "heart_rate", "hrv_score"}, rows)
+		return output.Print(output.Format(viper.GetString("output")), []string{"date", "score", "duration", "deep", "rem", "latency_asleep", "latency_out", "tnt", "resp_rate", "heart_rate", "hrv_score"}, rows)
 	},
 }
 

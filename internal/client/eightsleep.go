@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -396,6 +397,34 @@ type SleepDay struct {
 type Stage struct {
 	Stage    string  `json:"stage"`
 	Duration float64 `json:"duration"`
+}
+
+// StageDuration returns the summed duration in seconds for any matching stage names.
+func (d SleepDay) StageDuration(names ...string) float64 {
+	if len(names) == 0 || len(d.Stages) == 0 {
+		return 0
+	}
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[strings.ToLower(strings.TrimSpace(n))] = struct{}{}
+	}
+	var total float64
+	for _, s := range d.Stages {
+		if _, ok := want[strings.ToLower(strings.TrimSpace(s.Stage))]; ok {
+			total += s.Duration
+		}
+	}
+	return total
+}
+
+// DeepDuration returns deep sleep duration in seconds.
+func (d SleepDay) DeepDuration() float64 {
+	return d.StageDuration("deep")
+}
+
+// REMDuration returns REM sleep duration in seconds.
+func (d SleepDay) REMDuration() float64 {
+	return d.StageDuration("rem")
 }
 
 // GetSleepDay fetches sleep trends for a date (YYYY-MM-DD).
