@@ -50,7 +50,7 @@ var sleepRangeCmd = &cobra.Command{
 			rows = append(rows, map[string]any{
 				"date":       day.Date,
 				"score":      day.Score,
-				"duration":   day.Duration,
+				"duration":   day.DurationSeconds(),
 				"deep":       day.DeepDuration(),
 				"rem":        day.REMDuration(),
 				"tnt":        day.Tnt,

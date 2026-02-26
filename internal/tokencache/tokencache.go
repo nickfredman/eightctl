@@ -94,13 +94,29 @@ func Load(id Identity, expectedUserID string) (*CachedToken, error) {
 	}
 	key := cacheKey(id)
 	item, err := ring.Get(key)
-	if err == keyring.ErrKeyNotFound && id.Email == "" {
-		// No email specified: attempt to find a single matching token for this base/client.
-		if alt, findErr := findSingleForClient(ring, id); findErr == nil {
-			key = alt
-			item, err = ring.Get(key)
+	if err == keyring.ErrKeyNotFound {
+		// Backward/compatibility lookups when the exact identity key is missing.
+		if id.Email == "" {
+			// No email specified: attempt to find a single matching token for this base/client.
+			if alt, findErr := findSingleForClient(ring, id); findErr == nil {
+				key = alt
+				item, err = ring.Get(key)
+			} else {
+				log.Debug("keyring wildcard lookup failed", "error", findErr)
+			}
 		} else {
-			log.Debug("keyring wildcard lookup failed", "error", findErr)
+			// Try legacy key shapes first (some older builds used no client-id in key).
+			if legacyKey, ok := tryLegacyKeys(ring, id); ok {
+				key = legacyKey
+				item, err = ring.Get(key)
+			} else if alt, findErr := findSingleForBaseAndEmail(ring, id); findErr == nil {
+				// Client id may have changed across releases; recover any token for
+				// same base URL + email to avoid forced re-login/rate-limit loops.
+				key = alt
+				item, err = ring.Get(key)
+			} else {
+				log.Debug("keyring compat lookup failed", "error", findErr)
+			}
 		}
 	}
 	if err != nil {
@@ -142,6 +158,25 @@ func cacheKey(id Identity) string {
 	return tokenKey + ":" + base + "|" + id.ClientID + "|" + email
 }
 
+func tryLegacyKeys(ring keyring.Keyring, id Identity) (string, bool) {
+	base := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(id.BaseURL)), "/")
+	email := strings.ToLower(strings.TrimSpace(id.Email))
+	if email == "" {
+		return "", false
+	}
+	candidates := []string{
+		tokenKey + ":" + base + "||" + email,
+		tokenKey + ":" + base + "|" + email,
+		tokenKey + ":" + email,
+	}
+	for _, k := range candidates {
+		if _, err := ring.Get(k); err == nil {
+			return k, true
+		}
+	}
+	return "", false
+}
+
 // findSingleForClient finds a single cached key for the given base/client when email is unknown.
 // Returns ErrKeyNotFound if none or multiple exist.
 func findSingleForClient(ring keyring.Keyring, id Identity) (string, error) {
@@ -153,6 +188,29 @@ func findSingleForClient(ring keyring.Keyring, id Identity) (string, error) {
 	matches := []string{}
 	for _, k := range keys {
 		if strings.HasPrefix(k, prefix) {
+			matches = append(matches, k)
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	return "", keyring.ErrKeyNotFound
+}
+
+// findSingleForBaseAndEmail finds a token key for the same base URL + email,
+// regardless of client id (for compatibility across releases).
+func findSingleForBaseAndEmail(ring keyring.Keyring, id Identity) (string, error) {
+	keys, err := ring.Keys()
+	if err != nil {
+		return "", err
+	}
+	base := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(id.BaseURL)), "/")
+	email := strings.ToLower(strings.TrimSpace(id.Email))
+	suffix := "|" + email
+	prefix := tokenKey + ":" + base + "|"
+	matches := []string{}
+	for _, k := range keys {
+		if strings.HasPrefix(k, prefix) && strings.HasSuffix(k, suffix) {
 			matches = append(matches, k)
 		}
 	}

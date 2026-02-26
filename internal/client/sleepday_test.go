@@ -30,3 +30,30 @@ func TestSleepDayStageDuration_Empty(t *testing.T) {
 		t.Fatalf("REMDuration()=%v want 0", got)
 	}
 }
+
+func TestSleepDayUsesDirectDurationsAndMainSessionFallback(t *testing.T) {
+	day := SleepDay{
+		SleepDuration: 28800,
+		DeepDurationS: 4200,
+		REMDurationS:  6000,
+	}
+	if got := day.DurationSeconds(); got != 28800 {
+		t.Fatalf("DurationSeconds()=%v want 28800", got)
+	}
+	if got := day.DeepDuration(); got != 4200 {
+		t.Fatalf("DeepDuration()=%v want 4200", got)
+	}
+	if got := day.REMDuration(); got != 6000 {
+		t.Fatalf("REMDuration()=%v want 6000", got)
+	}
+
+	fallback := SleepDay{MainSession: struct {
+		Stages []Stage `json:"stages"`
+	}{Stages: []Stage{{Stage: "deep", Duration: 1200}, {Stage: "rem", Duration: 900}}}}
+	if got := fallback.DeepDuration(); got != 1200 {
+		t.Fatalf("fallback DeepDuration()=%v want 1200", got)
+	}
+	if got := fallback.REMDuration(); got != 900 {
+		t.Fatalf("fallback REMDuration()=%v want 900", got)
+	}
+}

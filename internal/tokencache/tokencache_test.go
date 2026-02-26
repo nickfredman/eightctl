@@ -190,6 +190,57 @@ func TestLoadWithoutEmailMultipleMatchesFails(t *testing.T) {
 	}
 }
 
+func TestLoadFallsBackToSameBaseAndEmailAcrossClientID(t *testing.T) {
+	withTestKeyring(t)
+	oldID := Identity{BaseURL: "https://api.example.com", ClientID: "old-client", Email: "user@example.com"}
+	newID := Identity{BaseURL: "https://api.example.com", ClientID: "new-client", Email: "user@example.com"}
+	if err := Save(oldID, "tok-old", time.Now().Add(time.Hour), "user-1"); err != nil {
+		t.Fatalf("Save old: %v", err)
+	}
+	cached, err := Load(newID, "user-1")
+	if err != nil {
+		t.Fatalf("Load new via fallback: %v", err)
+	}
+	if cached.Token != "tok-old" {
+		t.Fatalf("token mismatch: %q", cached.Token)
+	}
+}
+
+func TestLoadFallbackAmbiguousFails(t *testing.T) {
+	withTestKeyring(t)
+	if err := Save(Identity{BaseURL: "https://api.example.com", ClientID: "c1", Email: "user@example.com"}, "t1", time.Now().Add(time.Hour), "u"); err != nil {
+		t.Fatalf("save c1: %v", err)
+	}
+	if err := Save(Identity{BaseURL: "https://api.example.com", ClientID: "c2", Email: "user@example.com"}, "t2", time.Now().Add(time.Hour), "u"); err != nil {
+		t.Fatalf("save c2: %v", err)
+	}
+	if _, err := Load(Identity{BaseURL: "https://api.example.com", ClientID: "c3", Email: "user@example.com"}, "u"); err != keyring.ErrKeyNotFound {
+		t.Fatalf("expected not found for ambiguous client fallback, got %v", err)
+	}
+}
+
+func TestLoadLegacyKeyShapeWithoutClientID(t *testing.T) {
+	withTestKeyring(t)
+	id := Identity{BaseURL: "https://api.example.com", ClientID: "new-client", Email: "user@example.com"}
+
+	ring, err := openKeyring()
+	if err != nil {
+		t.Fatalf("openKeyring: %v", err)
+	}
+	legacyKey := tokenKey + ":https://api.example.com||user@example.com"
+	payload := []byte(`{"token":"legacy-token","expires_at":"2099-01-01T00:00:00Z","user_id":"u1"}`)
+	if err := ring.Set(keyring.Item{Key: legacyKey, Data: payload}); err != nil {
+		t.Fatalf("set legacy key: %v", err)
+	}
+	cached, err := Load(id, "u1")
+	if err != nil {
+		t.Fatalf("Load legacy: %v", err)
+	}
+	if cached.Token != "legacy-token" {
+		t.Fatalf("token mismatch: %q", cached.Token)
+	}
+}
+
 func TestFilePasswordFunc(t *testing.T) {
 	pw, err := filePassword("ignored")
 	if err != nil {

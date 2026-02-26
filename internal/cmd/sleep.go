@@ -44,7 +44,7 @@ var sleepDayCmd = &cobra.Command{
 				"tnt":            day.Tnt,
 				"resp_rate":      day.Respiratory,
 				"heart_rate":     day.HeartRate,
-				"duration":       day.Duration,
+				"duration":       day.DurationSeconds(),
 				"deep":           day.DeepDuration(),
 				"rem":            day.REMDuration(),
 				"latency_asleep": day.LatencyAsleep,

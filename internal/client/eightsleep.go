@@ -121,8 +121,8 @@ func (c *Client) authTokenEndpoint(ctx context.Context) error {
 		"grant_type":    "password",
 		"username":      c.Email,
 		"password":      c.Password,
-		"client_id":     "sleep-client",
-		"client_secret": "",
+		"client_id":     c.ClientID,
+		"client_secret": c.ClientSecret,
 	}
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, authURL, bytes.NewReader(body))
@@ -183,7 +183,6 @@ func (c *Client) authLegacyLogin(ctx context.Context) error {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("User-Agent", "okhttp/4.9.3")
-	req.Header.Set("Accept-Encoding", "gzip")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
@@ -282,7 +281,6 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("User-Agent", "okhttp/4.9.3")
-	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
@@ -382,7 +380,13 @@ type SleepDay struct {
 	LatencyAsleep float64 `json:"latencyAsleepSeconds"`
 	LatencyOut    float64 `json:"latencyOutSeconds"`
 	Duration      float64 `json:"sleepDurationSeconds"`
+	SleepDuration float64 `json:"sleepDuration"`
+	DeepDurationS float64 `json:"deepDuration"`
+	REMDurationS  float64 `json:"remDuration"`
 	Stages        []Stage `json:"stages"`
+	MainSession   struct {
+		Stages []Stage `json:"stages"`
+	} `json:"mainSession"`
 	SleepQuality  struct {
 		HRV struct {
 			Score float64 `json:"score"`
@@ -401,29 +405,52 @@ type Stage struct {
 
 // StageDuration returns the summed duration in seconds for any matching stage names.
 func (d SleepDay) StageDuration(names ...string) float64 {
-	if len(names) == 0 || len(d.Stages) == 0 {
-		return 0
-	}
 	want := make(map[string]struct{}, len(names))
 	for _, n := range names {
 		want[strings.ToLower(strings.TrimSpace(n))] = struct{}{}
 	}
-	var total float64
-	for _, s := range d.Stages {
-		if _, ok := want[strings.ToLower(strings.TrimSpace(s.Stage))]; ok {
-			total += s.Duration
+	sources := [][]Stage{d.Stages, d.MainSession.Stages}
+	for _, src := range sources {
+		if len(src) == 0 {
+			continue
+		}
+		var total float64
+		for _, s := range src {
+			if _, ok := want[strings.ToLower(strings.TrimSpace(s.Stage))]; ok {
+				total += s.Duration
+			}
+		}
+		if total > 0 {
+			return total
 		}
 	}
-	return total
+	return 0
+}
+
+// DurationSeconds returns best-known sleep duration in seconds.
+func (d SleepDay) DurationSeconds() float64 {
+	if d.Duration > 0 {
+		return d.Duration
+	}
+	if d.SleepDuration > 0 {
+		return d.SleepDuration
+	}
+	return 0
 }
 
 // DeepDuration returns deep sleep duration in seconds.
 func (d SleepDay) DeepDuration() float64 {
+	if d.DeepDurationS > 0 {
+		return d.DeepDurationS
+	}
 	return d.StageDuration("deep")
 }
 
 // REMDuration returns REM sleep duration in seconds.
 func (d SleepDay) REMDuration() float64 {
+	if d.REMDurationS > 0 {
+		return d.REMDurationS
+	}
 	return d.StageDuration("rem")
 }
 
